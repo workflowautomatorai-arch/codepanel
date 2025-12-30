@@ -1,0 +1,104 @@
+import React from 'react';
+import { useSolutions } from '../hooks';
+import {
+  useAppModeLayout,
+  LiveInterviewLayout,
+  LeetcodeSolverLayout,
+} from '../layouts';
+import {
+  ScreenshotSection,
+  SolutionSection,
+  CommandSection,
+} from '../components/sections';
+import DebugPage from './DebugPage';
+import { useSolutionContext } from '../contexts/SolutionContext';
+
+interface SolutionsPageProps {
+  setView: (view: 'queue' | 'solutions' | 'debug') => void;
+}
+
+const SolutionsPage: React.FC<SolutionsPageProps> = ({ setView: _setView }) => {
+  const { isLiveInterview } = useAppModeLayout();
+  const { state: solutionState } = useSolutionContext();
+  const {
+    debugProcessing,
+    solutionData,
+    thoughtsData,
+    timeComplexityData,
+    spaceComplexityData,
+    isResetting,
+    screenshots,
+    contentRef,
+    handleDeleteScreenshot,
+    setDebugProcessing,
+  } = useSolutions();
+
+  // Check if we should show debug view
+  if (!isResetting && solutionState.newSolution) {
+    return (
+      <DebugPage
+        isProcessing={debugProcessing}
+        setIsProcessing={setDebugProcessing}
+      />
+    );
+  }
+
+  const screenshotSection =
+    (solutionData || thoughtsData) && screenshots.length > 0 ? (
+      <ScreenshotSection
+        screenshots={screenshots}
+        onDeleteScreenshot={handleDeleteScreenshot}
+        isLoading={debugProcessing}
+      />
+    ) : null;
+
+  const commandSection = (
+    <CommandSection
+      mode="solutions"
+      isProcessing={!solutionData && !thoughtsData}
+      screenshots={screenshots}
+    />
+  );
+
+  const solutionSection = (
+    <SolutionSection
+      solutionData={solutionData}
+      thoughtsData={thoughtsData}
+      timeComplexityData={timeComplexityData}
+      spaceComplexityData={spaceComplexityData}
+      isGenerating={!solutionData && !thoughtsData}
+    />
+  );
+
+  if (isLiveInterview) {
+    return (
+      <div
+        ref={contentRef}
+        data-overlay-content
+        className="relative space-y-3 px-4 py-3"
+      >
+        <LiveInterviewLayout
+          screenshotSection={screenshotSection}
+          commandSection={commandSection}
+          solutionSection={solutionSection}
+        />
+      </div>
+    );
+  } else {
+    return (
+      <div
+        ref={contentRef}
+        data-overlay-content
+        className="w-full"
+      >
+        <LeetcodeSolverLayout
+          screenshotSection={screenshotSection}
+          commandSection={commandSection}
+          solutionSection={solutionSection}
+        />
+      </div>
+    );
+  }
+};
+
+export default SolutionsPage;

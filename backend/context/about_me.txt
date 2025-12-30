@@ -1,0 +1,178 @@
+# Arie Shifrin - Professional Context for AI Assistant
+
+## Professional Summary
+Senior DevOps/Cloud Engineer with 10+ years of experience in cloud infrastructure, automation, and AI-driven engineering solutions. Expert in AWS & GCP, Infrastructure as Code (Terraform), CI/CD pipelines, and Kubernetes. Currently focused on applying AI/ML to solve complex engineering challenges and enhance developer productivity.
+
+---
+
+## Work Experience
+
+### Merkle Inc | DevOps / Cloud Engineer | Columbia, MD | 2021 - Present
+
+**Key Achievements:**
+- Led organizational transformation to Infrastructure as Code (IaC) using Terraform
+- Reduced environment provisioning time by 75%
+- Reduced manual configuration errors by 50%
+- Cut manual documentation time by 90% using AI-driven automation
+- Achieved 99.99% uptime for GCP infrastructure
+- Accelerated critical issue discovery by 50%
+- Reduced recurring incidents by 20%
+- Ensured 100% uptime deployments
+
+**Major Projects:**
+1. **Agentic AI System for Terraform Drift Remediation**
+   - Built fully automated AI system on Kubernetes
+   - Uses Claude Code SDK to codify manual infrastructure changes
+   - Automatically pushes fixes to GitLab
+   - Streamlined cloud governance across AWS/GCP
+
+2. **AI Documentation Pipeline**
+   - Pioneered workflow using AWS Bedrock and prompt engineering
+   - Auto-generates technical documentation from infrastructure code
+   - Ensures wiki and references are always current
+
+3. **CI/CD Pipeline Architecture**
+   - GitHub Actions for containerized apps deploying to AWS ECS
+   - Integrated ECR, RDS, ALB - all provisioned via Terraform
+   - Implemented Atlantis for Terraform PR automation
+
+4. **GKE Infrastructure**
+   - Designed and deployed Kubernetes clusters
+   - Implemented Horizontal Pod Autoscaling (HPA)
+   - Created 50+ custom log-based metrics
+   - Built Data Studio dashboards from BigQuery logs
+
+### UnbeatableSale.com Inc | Senior Systems and Cloud Engineer | Lakewood, NJ | 2015 - 2021
+
+**Key Achievements:**
+- Completed AWS migration 20% ahead of schedule
+- Reduced call handling time by 15% with AI automation
+- Automated 30% of routine customer inquiries
+- Improved database performance by 50%
+- Cut user provisioning time by 95%
+- Achieved 99.99% image availability
+- Saved 10-15% annually on vendor contracts
+
+**Major Projects:**
+1. **Cloud Migration**
+   - Led migration from on-premises to AWS and GCP
+   - Used AWS CLI, Python Boto3 SDK, AWS Server Migration Service
+   - Containerized web application to Kubernetes on GKE
+
+2. **Amazon Connect Implementation**
+   - Pioneered adoption of conversational AI
+   - Integrated AWS Lex and Lambda for automated customer interactions
+
+3. **Large-Scale Asset Migration**
+   - Migrated ~30M images to AWS S3
+   - Implemented CloudFront with multi-region failover
+
+4. **Automation Scripts**
+   - PowerShell script for user account creation across 4 services
+   - Python/Boto3 automation for EC2 management
+
+### Enchante Accessories | System Administrator | New York, NY | 2014 - 2015
+- Improved system reliability by 20%
+- Reduced IT overhead costs by 10%
+- Led server virtualization projects
+
+---
+
+## Technical Skills
+
+**Cloud Platforms:**
+- AWS: EC2, S3, ECS, ECR, RDS, ALB, Lambda, Bedrock, VPC, IAM, CloudFront, Connect, Lex
+- GCP: GKE, Compute Engine, Cloud SQL, BigQuery, Stackdriver, Cloud Functions
+
+**Infrastructure as Code:** Terraform, Helm, Atlantis, Packer
+
+**CI/CD:** GitHub Actions, GitLab CI, Jenkins, Google Cloud Build
+
+**Containers & Orchestration:** Docker, Kubernetes (GKE, EKS)
+
+**Languages:** Python (Boto3), Bash, PowerShell, Groovy
+
+**AI/ML Engineering:**
+- Agentic AI workflows (Claude SDK)
+- Prompt engineering
+- AWS Bedrock
+- AI-generated documentation
+- Automated drift resolution
+
+**Monitoring:** CloudWatch, GCP Logging, Prometheus, Grafana, BigQuery
+
+**Deployment Strategies:** Canary, Blue/Green, Progressive Delivery
+
+---
+
+## Certifications
+
+- GCP Professional Cloud DevOps Engineer (2023)
+- AWS Certified Solutions Architect - Associate (2018-2021)
+
+---
+
+## Behavioral Interview Examples (STAR Format)
+
+### Leadership & Team Development
+**Situation:** Junior engineers lacked cloud and container expertise
+**Task:** Develop team capabilities while maintaining productivity
+**Action:** Created training program, introduced Docker to 10+ developers, mentored 3 junior engineers on cloud architecture and CI/CD best practices
+**Result:** Team became self-sufficient in containerization, improved deployment practices
+
+### Technical Challenge - Large Scale Migration
+**Situation:** Company had 30M+ images on legacy infrastructure
+**Task:** Migrate to cloud with zero downtime
+**Action:** Designed S3 migration strategy with CloudFront multi-region failover
+**Result:** Achieved 99.99% availability, significantly reduced load times
+
+### Process Improvement - Documentation
+**Situation:** Manual documentation was time-consuming and often outdated
+**Task:** Automate documentation while maintaining quality
+**Action:** Pioneered AI-driven workflow using AWS Bedrock and prompt engineering
+**Result:** Cut documentation time by 90%, ensured always-current references
+
+### Innovation - AI for Infrastructure
+**Situation:** Terraform drift was causing governance issues across AWS/GCP
+**Task:** Automate drift detection and remediation
+**Action:** Built agentic AI system on Kubernetes using Claude Code SDK
+**Result:** Automated fixes pushed to GitLab, streamlined cloud governance
+
+### Vendor Management
+**Situation:** IT costs were higher than industry benchmarks
+**Task:** Reduce spending while maintaining service quality
+**Action:** Negotiated vendor contracts, conducted competitive analysis
+**Result:** Achieved 10-15% annual cost savings
+
+### Agile Collaboration
+**Situation:** Development and DevOps teams worked in silos
+**Task:** Improve collaboration and deployment velocity
+**Action:** Actively participated in Agile/Scrum, story planning, daily standups; implemented Atlantis for PR automation
+**Result:** Improved delivery cadence, enhanced release quality, 100% uptime deployments
+
+### Crisis Management - Production Issues
+**Situation:** Production web applications had recurring issues
+**Task:** Improve issue detection and resolution
+**Action:** Designed comprehensive monitoring strategy with 50+ custom log-based metrics, performed root cause analysis
+**Result:** Accelerated critical issue discovery by 50%, reduced recurring incidents by 20%
+
+---
+
+## Strengths
+
+- Strong technical leadership with ability to mentor and grow teams
+- Expert at translating complex technical concepts for stakeholders
+- Proven track record of delivering projects ahead of schedule
+- Innovative problem-solver, especially in applying AI to DevOps
+- Detail-oriented with focus on automation and efficiency
+- Comfortable presenting to executive leadership (COO, VP level)
+
+---
+
+## Current Focus Areas
+
+- AI/ML Operations (MLOps)
+- Agentic AI systems for infrastructure automation
+- GenAI for DevOps (AIOps)
+- Cloud-native AI workloads
+- Developer productivity tools

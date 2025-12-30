@@ -1,0 +1,544 @@
+import { app, ipcMain, shell } from 'electron';
+import { IIpcHandlerDeps } from './main';
+import { IPC_EVENTS, API_BASE_URL } from '../shared/constants';
+import { AppMode } from '../shared/api';
+import { AuthStorage } from './auth.storage';
+import { AppStorage } from './app.storage';
+import axios from 'axios';
+
+export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
+  console.log('Initializing IPC handlers');
+
+  const authStorage = AuthStorage.getInstance();
+  const appStorage = AppStorage.getInstance();
+
+  ipcMain.handle(IPC_EVENTS.TOOLTIP.MOUSE_ENTER, () => {
+    // Disable click-through when mouse enters interactive area
+    const mainWindow = deps.getMainWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setIgnoreMouseEvents(false);
+    }
+  });
+
+  ipcMain.handle(IPC_EVENTS.TOOLTIP.MOUSE_LEAVE, () => {
+    // Re-enable click-through when mouse leaves interactive area
+    const mainWindow = deps.getMainWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    }
+  });
+
+  ipcMain.handle(IPC_EVENTS.TOOLTIP.CLOSE_CLICK, () => {
+    console.log('Tooltip close button clicked - closing application');
+    app.quit();
+  });
+
+  ipcMain.handle(IPC_EVENTS.QUEUE.LOADED_NO_SCREENSHOTS, () => {
+    console.log('Queue page loaded with no screenshots');
+    deps.applyQueueWindowBehavior();
+  });
+
+  ipcMain.handle(
+    IPC_EVENTS.QUEUE.LOADED_WITH_SCREENSHOTS,
+    (_event, screenshotCount) => {
+      console.log('Queue page loaded with screenshots:', screenshotCount);
+      deps.applyQueueWindowBehavior();
+    },
+  );
+
+  // Screenshot queue handlers
+  ipcMain.handle('get-screenshot-queue', () => {
+    return deps.getScreenshotQueue();
+  });
+
+  ipcMain.handle('delete-screenshot', async (_event, path: string) => {
+    return deps.deleteScreenshot(path);
+  });
+
+  ipcMain.handle('clear-all-screenshots', async () => {
+    return deps.clearAllScreenshots();
+  });
+
+  ipcMain.handle('get-image-preview', async (_event, path: string) => {
+    return deps.getImagePreview(path);
+  });
+
+  // Window dimension handlers
+  ipcMain.handle(
+    'update-content-dimensions',
+    (
+      _event,
+      {
+        width,
+        height,
+        source,
+      }: { width: number; height: number; source: string },
+    ) => {
+      // TODO: issue - chain called while window is idle at start
+      console.log(
+        'Received content dimensions - width:',
+        width,
+        'height:',
+        height,
+        'source:',
+        source,
+      );
+
+      if (width && height) {
+        deps.setWindowDimensions(width, height, source);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'set-window-dimensions',
+    (_event, width: number, height: number, source: string) => {
+      deps.setWindowDimensions(width, height, source);
+    },
+  );
+
+  // Screenshot management handlers
+  ipcMain.handle('get-screenshots', async () => {
+    try {
+      const queue = deps.getScreenshotQueue();
+
+      return await Promise.all(
+        queue.map(async (path) => ({
+          path,
+          preview: await deps.getImagePreview(path),
+        })),
+      );
+    } catch (error) {
+      console.error('Error getting screenshots:', error);
+
+      throw error;
+    }
+  });
+
+  // Screenshot trigger handlers
+  ipcMain.handle('trigger-screenshot', async () => {
+    const mainWindow = deps.getMainWindow();
+    if (mainWindow) {
+      try {
+        const screenshotPath = await deps.takeScreenshot();
+        const preview = await deps.getImagePreview(screenshotPath);
+        mainWindow.webContents.send('screenshot-taken', {
+          path: screenshotPath,
+          preview,
+        });
+
+        return { success: true };
+      } catch (error) {
+        console.error('Error triggering screenshot:', error);
+
+        return { error: 'Failed to trigger screenshot' };
+      }
+    }
+
+    return { error: 'No main window available' };
+  });
+
+  ipcMain.handle('take-screenshot', async () => {
+    try {
+      const screenshotPath = await deps.takeScreenshot();
+      const preview = await deps.getImagePreview(screenshotPath);
+
+      return { path: screenshotPath, preview };
+    } catch (error) {
+      console.error('Error taking screenshot:', error);
+
+      return { error: 'Failed to take screenshot' };
+    }
+  });
+
+  ipcMain.handle('open-external-url', (_event, url: string) => {
+    shell.openExternal(url).catch(console.error);
+  });
+
+  ipcMain.handle('open-settings-portal', () => {
+    // Settings are local in self-hosted mode
+    console.log('Settings portal requested - using local settings');
+  });
+
+  ipcMain.handle('open-subscription-portal', async () => {
+    try {
+      // Self-hosted mode - no subscription needed
+      console.log('Subscription portal requested - self-hosted mode');
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error opening checkout page:', error);
+
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to open checkout page',
+      };
+    }
+  });
+
+  // Window management handlers
+  ipcMain.handle('toggle-window', () => {
+    try {
+      deps.toggleMainWindow();
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error toggling window:', error);
+
+      return { error: 'Failed to toggle window' };
+    }
+  });
+
+  ipcMain.handle('reset-queues', () => {
+    try {
+      deps.clearQueues();
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error resetting queues:', error);
+
+      return { error: 'Failed to reset queues' };
+    }
+  });
+
+  // Reset handlers
+  ipcMain.handle('trigger-reset', async () => {
+    try {
+      // First cancel any ongoing requests
+      deps.processingHelper?.cancelOngoingRequests();
+
+      // Clear all queues immediately
+      deps.clearQueues();
+
+      // Clear all conversations in backend
+      try {
+        await axios.delete(`${API_BASE_URL}/conversations`);
+        console.log('Cleared all backend conversations');
+      } catch (error) {
+        console.error('Failed to clear backend conversations:', error);
+      }
+
+      // Reset view to queue
+      deps.setView('queue');
+
+      // Get main window and send reset events
+      const mainWindow = deps.getMainWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('reset-view');
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error triggering reset:', error);
+
+      return { error: 'Failed to trigger reset' };
+    }
+  });
+
+  // Window movement handlers
+  ipcMain.handle('trigger-move-left', () => {
+    try {
+      deps.moveWindowLeft();
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error moving window left:', error);
+
+      return { error: 'Failed to move window left' };
+    }
+  });
+
+  ipcMain.handle('trigger-move-right', () => {
+    try {
+      deps.moveWindowRight();
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error moving window right:', error);
+
+      return { error: 'Failed to move window right' };
+    }
+  });
+
+  ipcMain.handle('trigger-move-up', () => {
+    try {
+      deps.moveWindowUp();
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error moving window up:', error);
+
+      return { error: 'Failed to move window up' };
+    }
+  });
+
+  ipcMain.handle('trigger-move-down', () => {
+    try {
+      deps.moveWindowDown();
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error moving window down:', error);
+
+      return { error: 'Failed to move window down' };
+    }
+  });
+
+  // Auth token handlers
+  ipcMain.handle(
+    'auth-set-token',
+    (_event, token: string, expiryTimestamp?: number) => {
+      try {
+        authStorage.setAuthToken(token, expiryTimestamp);
+
+        return { success: true };
+      } catch (error) {
+        console.error('Error setting auth token:', error);
+
+        return { error: 'Failed to set auth token' };
+      }
+    },
+  );
+
+  ipcMain.handle('auth-get-token', () => {
+    try {
+      const token = authStorage.getAuthToken();
+
+      return { success: true, token };
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+
+      return { error: 'Failed to get auth token' };
+    }
+  });
+
+  ipcMain.handle('auth-clear-token', () => {
+    try {
+      authStorage.clearAuthToken();
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error clearing auth token:', error);
+
+      return { error: 'Failed to clear auth token' };
+    }
+  });
+
+  ipcMain.handle('auth-is-authenticated', () => {
+    try {
+      const isAuthenticated = authStorage.isAuthenticated();
+
+      return { success: true, isAuthenticated };
+    } catch (error) {
+      console.error('Error checking authentication:', error);
+
+      return { error: 'Failed to check authentication' };
+    }
+  });
+
+  ipcMain.handle('auth-set-last-used-email', (_event, email: string) => {
+    try {
+      authStorage.setLastUsedEmail(email);
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error setting last used email:', error);
+
+      return { error: 'Failed to set last used email' };
+    }
+  });
+
+  ipcMain.handle('auth-get-last-used-email', () => {
+    try {
+      const email = authStorage.getLastUsedEmail();
+
+      return { success: true, email };
+    } catch (error) {
+      console.error('Error getting last used email:', error);
+
+      return { error: 'Failed to get last used email' };
+    }
+  });
+
+  ipcMain.handle(IPC_EVENTS.APP_MODE.CHANGE, (_event, appMode: string) => {
+    try {
+      console.log('App mode changed to:', appMode);
+
+      if (Object.values(AppMode).includes(appMode as AppMode)) {
+        deps.setAppMode(appMode as AppMode);
+
+        appStorage.setAppMode(appMode as AppMode);
+        console.log('App mode saved to storage:', appMode);
+
+        const mainWindow = deps.getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          const currentView = deps.getView();
+          if (currentView === 'queue') {
+            deps.applyQueueWindowBehavior();
+          }
+        }
+      } else {
+        return { error: 'Invalid app mode' };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error changing app mode:', error);
+
+      return { error: 'Failed to change app mode' };
+    }
+  });
+
+  ipcMain.handle('get-app-mode', () => {
+    try {
+      const appMode = deps.getAppMode();
+      console.log('Getting app mode:', appMode);
+
+      return { success: true, appMode };
+    } catch (error) {
+      console.error('Error getting app mode:', error);
+
+      return { error: 'Failed to get app mode' };
+    }
+  });
+
+  // Clipboard handlers
+  ipcMain.handle('write-text', async (_event, text: string) => {
+    try {
+      return await deps.writeText(text);
+    } catch (error) {
+      console.error('Error writing text to clipboard:', error);
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to copy text',
+      };
+    }
+  });
+
+  // Copy and refresh window handlers
+  ipcMain.handle(
+    'copy-and-refresh-window',
+    async (_event, text: string, waitDuration?: number) => {
+      try {
+        return await deps.copyAndRefreshWindow(text, waitDuration);
+      } catch (error) {
+        console.error('Error in copy and refresh window:', error);
+
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to copy and refresh window',
+        };
+      }
+    },
+  );
+
+  // Voice processing handler
+  ipcMain.handle(
+    'process-voice',
+    async (
+      _event,
+      data: {
+        audio?: string;
+        images?: string[];
+        text?: string;
+        conversation_id?: string;
+        conversation_history?: Array<{ role: string; content: string }>;
+      },
+    ) => {
+      const mainWindow = deps.getMainWindow();
+
+      try {
+        console.log('Processing voice request...');
+
+        // Emit start event to switch view
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('initial-start');
+        }
+
+        // Build request body - only include fields that have values
+        const requestBody: {
+          audio?: string;
+          images: string[];
+          text?: string;
+          conversation_id?: string;
+          conversation_history?: Array<{ role: string; content: string }>;
+        } = {
+          images: data.images || [],
+        };
+        if (data.audio) {
+          requestBody.audio = data.audio;
+        }
+        if (data.text) {
+          requestBody.text = data.text;
+        }
+        if (data.conversation_id) {
+          requestBody.conversation_id = data.conversation_id;
+        }
+        if (data.conversation_history && data.conversation_history.length > 0) {
+          requestBody.conversation_history = data.conversation_history;
+        }
+
+        const response = await axios.post(
+          `${API_BASE_URL}/voice`,
+          requestBody,
+          {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 120000,
+          },
+        );
+
+        console.log('Voice response received');
+
+        // Emit solution success to display result
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          // If there's code, show it in code block with response as thoughts
+          // If there's no code, show response as thoughts only (rendered as markdown)
+          const hasCode = !!response.data.code;
+          const solutionData = {
+            code: hasCode ? response.data.code : null,
+            thoughts: [response.data.response || 'Voice query processed'],
+            time_complexity: hasCode ? 'N/A' : null,
+            space_complexity: hasCode ? 'N/A' : null,
+            problem_statement: 'Voice Query',
+            conversation_id: response.data.conversation_id,
+          };
+          mainWindow.webContents.send('solution-success', solutionData);
+        }
+
+        return {
+          success: true,
+          response: response.data.response,
+          code: response.data.code,
+          conversation_id: response.data.conversation_id,
+        };
+      } catch (error) {
+        console.error('Error processing voice:', error);
+
+        // Emit error event
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(
+            'solution-error',
+            error instanceof Error
+              ? error.message
+              : 'Failed to process voice request',
+          );
+        }
+
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to process voice request',
+        };
+      }
+    },
+  );
+}

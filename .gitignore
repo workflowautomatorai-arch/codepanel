@@ -1,0 +1,13 @@
+node_modules
+dist-electron
+release
+dist
+**/.DS_Store
+**/.vscode
+**/.idea
+scripts/manual-notarize.js
+.env.local
+.env
+backend/.env
+certificate.p12
+**/CLAUDE.local.md
