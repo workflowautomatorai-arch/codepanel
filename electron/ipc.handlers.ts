@@ -1,10 +1,40 @@
-import { app, ipcMain, shell } from 'electron';
+import { app, ipcMain, shell, BrowserWindow } from 'electron';
 import { IIpcHandlerDeps } from './main';
 import { IPC_EVENTS, API_BASE_URL } from '../shared/constants';
 import { AppMode } from '../shared/api';
 import { AuthStorage } from './auth.storage';
 import { AppStorage } from './app.storage';
 import axios from 'axios';
+import WebSocket from 'ws';
+import { AudioCapture } from './audio-capture';
+
+// Live session state
+let liveSocket: WebSocket | null = null;
+let audioCapture: AudioCapture | null = null;
+
+function waitForMessage(ws: WebSocket, type: string, timeoutMs = 10000): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      ws.off('message', handler);
+      reject(new Error(`Timeout waiting for message type: ${type}`));
+    }, timeoutMs);
+
+    const handler = (data: WebSocket.Data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        if (message.type === type) {
+          clearTimeout(timeout);
+          ws.off('message', handler);
+          resolve(message);
+        }
+      } catch {
+        // Ignore non-JSON messages
+      }
+    };
+
+    ws.on('message', handler);
+  });
+}
 
 export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   console.log('Initializing IPC handlers');
@@ -759,4 +789,91 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       }
     },
   );
+
+  // =============================================================================
+  // LIVE SESSION HANDLERS
+  // =============================================================================
+
+  // Start live listening session
+  ipcMain.handle('start-live-session', async () => {
+    try {
+      // Close existing session if any
+      if (liveSocket) {
+        liveSocket.close();
+        liveSocket = null;
+      }
+      if (audioCapture) {
+        audioCapture.stop();
+        audioCapture = null;
+      }
+
+      // Connect to Python backend WebSocket
+      liveSocket = new WebSocket('ws://localhost:3000/live/stream');
+
+      await new Promise<void>((resolve, reject) => {
+        liveSocket!.onopen = () => resolve();
+        liveSocket!.onerror = (err) => reject(err);
+      });
+
+      // Wait for ready confirmation from backend
+      const ready = await waitForMessage(liveSocket, 'ready');
+      console.log('[IPC] Live session ready:', ready.session_id);
+
+      // Start audio capture
+      audioCapture = new AudioCapture();
+      audioCapture.onAudioData((pcmData: Buffer) => {
+        if (liveSocket?.readyState === WebSocket.OPEN) {
+          liveSocket.send(pcmData);
+        }
+      });
+      await audioCapture.start();
+
+      // Forward responses to renderer
+      liveSocket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data.toString());
+          if (data.type === 'response') {
+            const mainWindow = BrowserWindow.getAllWindows()[0];
+            mainWindow?.webContents.send('live-response', data);
+          }
+        } catch {
+          // Ignore non-JSON messages
+        }
+      };
+
+      liveSocket.onclose = () => {
+        console.log('[IPC] Live WebSocket closed');
+        audioCapture?.stop();
+        audioCapture = null;
+        liveSocket = null;
+      };
+
+      return { success: true, sessionId: ready.session_id };
+    } catch (error) {
+      console.error('[IPC] Failed to start live session:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // Stop live listening session
+  ipcMain.handle('stop-live-session', async () => {
+    try {
+      audioCapture?.stop();
+      audioCapture = null;
+      liveSocket?.close();
+      liveSocket = null;
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // Send text while in live mode
+  ipcMain.handle('send-live-text', async (_, text: string) => {
+    if (liveSocket?.readyState === WebSocket.OPEN) {
+      liveSocket.send(JSON.stringify({ type: 'text', content: text }));
+      return { success: true };
+    }
+    return { success: false, error: 'Live session not active' };
+  });
 }

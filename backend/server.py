@@ -8,10 +8,13 @@ import asyncio
 import base64
 import re
 import threading
+import uuid
+import time
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -24,9 +27,11 @@ from prompts import (
     read_context_file,
     list_context_files,
     get_available_context_files,
+    get_live_system_prompt,
     QueryType,
     CONTEXT_DIR,
 )
+from live_session import LiveSessionManager
 from services import AssistantService, AssistantRequest, AssistantResponse, StreamChunk, get_assistant_service
 from audio_utils import convert_audio_to_wav, find_ffmpeg
 
@@ -682,6 +687,95 @@ Analyze the issue and provide a corrected solution. Respond with ONLY the fixed 
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# LIVE API WEBSOCKET ENDPOINT
+# =============================================================================
+
+@app.websocket("/live/stream")
+async def live_audio_stream(websocket: WebSocket):
+    """
+    Bidirectional WebSocket for live audio streaming.
+
+    Client sends:
+    - Binary data: PCM audio chunks (16kHz, 16-bit, mono)
+    - JSON: {"type": "text", "content": "..."} for text messages
+
+    Server sends:
+    - JSON: {"type": "ready", "session_id": "..."}
+    - JSON: {"type": "response", "content": "...", "timestamp": ...}
+    - JSON: {"type": "error", "content": "..."}
+    """
+    await websocket.accept()
+    session_id = str(uuid.uuid4())
+
+    client = get_client()
+    manager = LiveSessionManager(client)
+
+    print(f"[Live] New connection: {session_id}")
+
+    try:
+        # Start Live API session with system prompt
+        system_prompt = get_live_system_prompt()
+        await manager.start_session(system_prompt)
+
+        # Send ready confirmation
+        await websocket.send_json({
+            "type": "ready",
+            "session_id": session_id
+        })
+
+        # Run send and receive concurrently
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(_handle_incoming(websocket, manager))
+            tg.create_task(_handle_outgoing(websocket, manager))
+
+    except WebSocketDisconnect:
+        print(f"[Live] Client disconnected: {session_id}")
+    except Exception as e:
+        print(f"[Live] Error: {e}")
+        try:
+            await websocket.send_json({"type": "error", "content": str(e)})
+        except:
+            pass
+    finally:
+        await manager.stop_session()
+        print(f"[Live] Session ended: {session_id}")
+
+
+async def _handle_incoming(websocket: WebSocket, manager: LiveSessionManager):
+    """Receive audio/text from Electron, forward to Live API"""
+    try:
+        while manager.is_active:
+            message = await websocket.receive()
+
+            if "bytes" in message:
+                # Binary audio data
+                await manager.send_audio(message["bytes"])
+            elif "text" in message:
+                # JSON text message
+                data = json.loads(message["text"])
+                if data.get("type") == "text":
+                    await manager.send_text(data.get("content", ""))
+    except WebSocketDisconnect:
+        manager.is_active = False
+    except Exception as e:
+        print(f"[Live] Incoming handler error: {e}")
+        manager.is_active = False
+
+
+async def _handle_outgoing(websocket: WebSocket, manager: LiveSessionManager):
+    """Receive text from Live API, send to Electron"""
+    try:
+        async for text in manager.receive_responses():
+            await websocket.send_json({
+                "type": "response",
+                "content": text,
+                "timestamp": time.time()
+            })
+    except Exception as e:
+        print(f"[Live] Outgoing handler error: {e}")
 
 
 # =============================================================================

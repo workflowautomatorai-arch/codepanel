@@ -130,6 +130,12 @@ export interface ElectronAPI {
     sources?: string[];
     context_files_used?: string[];
   }) => void) => () => void;
+  // Live mode
+  startLiveSession: () => Promise<{ success: boolean; sessionId?: string; error?: string }>;
+  stopLiveSession: () => Promise<{ success: boolean; error?: string }>;
+  sendLiveText: (text: string) => Promise<{ success: boolean; error?: string }>;
+  onLiveResponse: (callback: (response: { type: string; content: string; timestamp: number }) => void) => () => void;
+  onToggleLiveMode: (callback: () => void) => () => void;
 }
 
 export interface IElectron {

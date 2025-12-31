@@ -126,6 +126,12 @@ interface ElectronAPI {
     sources?: string[];
     context_files_used?: string[];
   }) => void) => () => void;
+  // Live mode
+  startLiveSession: () => Promise<{ success: boolean; sessionId?: string; error?: string }>;
+  stopLiveSession: () => Promise<{ success: boolean; error?: string }>;
+  sendLiveText: (text: string) => Promise<{ success: boolean; error?: string }>;
+  onLiveResponse: (callback: (response: { type: string; content: string; timestamp: number }) => void) => () => void;
+  onToggleLiveMode: (callback: () => void) => () => void;
 }
 
 export const PROCESSING_EVENTS = {
@@ -349,6 +355,24 @@ const electronAPI = {
     ipcRenderer.on('assistant-stream-chunk', subscription);
     return () => {
       ipcRenderer.removeListener('assistant-stream-chunk', subscription);
+    };
+  },
+  // Live mode
+  startLiveSession: () => ipcRenderer.invoke('start-live-session'),
+  stopLiveSession: () => ipcRenderer.invoke('stop-live-session'),
+  sendLiveText: (text: string) => ipcRenderer.invoke('send-live-text', text),
+  onLiveResponse: (callback: (response: { type: string; content: string; timestamp: number }) => void) => {
+    const subscription = (_: any, response: { type: string; content: string; timestamp: number }) => callback(response);
+    ipcRenderer.on('live-response', subscription);
+    return () => {
+      ipcRenderer.removeListener('live-response', subscription);
+    };
+  },
+  onToggleLiveMode: (callback: () => void) => {
+    const subscription = () => callback();
+    ipcRenderer.on('toggle-live-mode', subscription);
+    return () => {
+      ipcRenderer.removeListener('toggle-live-mode', subscription);
     };
   },
 } as ElectronAPI;

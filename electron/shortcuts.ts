@@ -128,5 +128,14 @@ export class ShortcutsHelper {
     globalShortcut.register('CommandOrControl+Shift+Right', () => {
       console.debug('Command+Shift+Right pressed!');
     });
+
+    // Live mode toggle
+    globalShortcut.register('CommandOrControl+Shift+L', () => {
+      console.debug('Command/Ctrl + Shift + L pressed. Toggling live mode.');
+      const mainWindow = this.deps.getMainWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('toggle-live-mode');
+      }
+    });
   }
 }
