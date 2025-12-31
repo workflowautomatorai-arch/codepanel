@@ -152,7 +152,17 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   });
 
   ipcMain.handle('open-external-url', (_event, url: string) => {
-    shell.openExternal(url).catch(console.error);
+    // Security: Only allow http and https URLs to prevent local file execution
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        console.error('Blocked non-http(s) URL:', url);
+        return;
+      }
+      shell.openExternal(url).catch(console.error);
+    } catch (e) {
+      console.error('Invalid URL:', url);
+    }
   });
 
   ipcMain.handle('open-settings-portal', () => {
@@ -537,6 +547,214 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
             error instanceof Error
               ? error.message
               : 'Failed to process voice request',
+        };
+      }
+    },
+  );
+
+  // Assistant query handler (unified assistant mode)
+  ipcMain.handle(
+    'query-assistant',
+    async (
+      _event,
+      data: {
+        text?: string;
+        audio?: string;
+        images?: string[];
+        previousInteractionId?: string;
+        enableWebSearch?: boolean;
+        enableUrlContext?: boolean;
+        enablePersonalContext?: boolean;
+      },
+    ) => {
+      try {
+        console.log('Processing assistant query...');
+
+        // Build request body
+        const requestBody: {
+          text?: string;
+          audio?: string;
+          images?: string[];
+          previous_interaction_id?: string;
+          enable_web_search?: boolean;
+          enable_url_context?: boolean;
+          enable_personal_context?: boolean;
+        } = {};
+
+        if (data.text) {
+          requestBody.text = data.text;
+        }
+        if (data.audio) {
+          requestBody.audio = data.audio;
+        }
+        if (data.images && data.images.length > 0) {
+          requestBody.images = data.images;
+        }
+        if (data.previousInteractionId) {
+          requestBody.previous_interaction_id = data.previousInteractionId;
+        }
+        if (data.enableWebSearch !== undefined) {
+          requestBody.enable_web_search = data.enableWebSearch;
+        }
+        if (data.enableUrlContext !== undefined) {
+          requestBody.enable_url_context = data.enableUrlContext;
+        }
+        if (data.enablePersonalContext !== undefined) {
+          requestBody.enable_personal_context = data.enablePersonalContext;
+        }
+
+        const response = await axios.post(
+          `${API_BASE_URL}/assistant/query`,
+          requestBody,
+          {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 120000,
+          },
+        );
+
+        console.log('Assistant query response received');
+
+        return {
+          success: true,
+          response: response.data.response,
+          sources: response.data.sources,
+          contextFilesUsed: response.data.context_files_used,
+          interactionId: response.data.interaction_id,
+        };
+      } catch (error) {
+        console.error('Error processing assistant query:', error);
+
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to process assistant query',
+        };
+      }
+    },
+  );
+
+  // Assistant streaming query handler
+  ipcMain.handle(
+    'query-assistant-stream',
+    async (
+      event,
+      data: {
+        text?: string;
+        audio?: string;
+        images?: string[];
+        previousInteractionId?: string;
+        enableWebSearch?: boolean;
+        enableUrlContext?: boolean;
+        enablePersonalContext?: boolean;
+      },
+    ) => {
+      try {
+        console.log('Processing assistant streaming query...');
+
+        const requestBody: {
+          text?: string;
+          audio?: string;
+          images?: string[];
+          previous_interaction_id?: string;
+          enable_web_search?: boolean;
+          enable_url_context?: boolean;
+          enable_personal_context?: boolean;
+        } = {};
+
+        if (data.text) requestBody.text = data.text;
+        if (data.audio) requestBody.audio = data.audio;
+        if (data.images && data.images.length > 0) requestBody.images = data.images;
+        if (data.previousInteractionId) requestBody.previous_interaction_id = data.previousInteractionId;
+        if (data.enableWebSearch !== undefined) requestBody.enable_web_search = data.enableWebSearch;
+        if (data.enableUrlContext !== undefined) requestBody.enable_url_context = data.enableUrlContext;
+        if (data.enablePersonalContext !== undefined) requestBody.enable_personal_context = data.enablePersonalContext;
+
+        // Use fetch for SSE streaming
+        const response = await fetch(`${API_BASE_URL}/assistant/query/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('No response body');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        // Helper to safely send events (checks if sender is still valid)
+        const safeSend = (channel: string, data: unknown): boolean => {
+          try {
+            if (event.sender.isDestroyed()) {
+              console.log('Sender destroyed, stopping stream');
+              return false;
+            }
+            event.sender.send(channel, data);
+            return true;
+          } catch (e) {
+            console.warn('Failed to send to renderer:', e);
+            return false;
+          }
+        };
+
+        // Return immediately to indicate streaming started
+        // The actual data will be sent via events
+        (async () => {
+          try {
+            while (true) {
+              // Check if sender is still valid before reading
+              if (event.sender.isDestroyed()) {
+                console.log('Sender destroyed, cancelling stream');
+                await reader.cancel();
+                break;
+              }
+
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n\n');
+              buffer = lines.pop() || '';
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const jsonStr = line.slice(6);
+                  try {
+                    const chunk = JSON.parse(jsonStr);
+                    // Send chunk to renderer, stop if sender is gone
+                    if (!safeSend('assistant-stream-chunk', chunk)) {
+                      await reader.cancel();
+                      return;
+                    }
+                  } catch (e) {
+                    console.error('Failed to parse SSE chunk:', e);
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Streaming error:', e);
+            safeSend('assistant-stream-chunk', {
+              type: 'error',
+              content: e instanceof Error ? e.message : 'Stream error',
+            });
+          }
+        })();
+
+        return { success: true };
+      } catch (error) {
+        console.error('Error starting assistant stream:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to start stream',
         };
       }
     },

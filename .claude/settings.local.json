@@ -3,7 +3,11 @@
     "allow": [
       "Bash(cat:*)",
       "Skill(superpowers:brainstorming)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(git add:*)",
+      "Skill(feature-dev:feature-dev)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

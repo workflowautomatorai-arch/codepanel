@@ -98,6 +98,17 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!venv/**",
+          "!__pycache__/**",
+          "!**/__pycache__/**",
+          "!*.pyc"
+        ]
       }
     ],
     "extraMetadata": {

@@ -137,6 +137,27 @@ export interface LeetCodeDebugResponse {
 }
 
 // =============================================================================
+// ASSISTANT TYPES
+// =============================================================================
+
+export interface AssistantQueryRequest {
+  text?: string; // Text query
+  images?: string[]; // Array of base64-encoded images
+  audio?: string; // Base64-encoded audio
+  previousInteractionId?: string; // For conversation continuity
+  enableWebSearch?: boolean; // Enable Google Search (default: true)
+  enableUrlContext?: boolean; // Enable URL analysis (default: true)
+  enablePersonalContext?: boolean; // Enable personal context (default: true)
+}
+
+export interface AssistantQueryResponse {
+  response: string; // Main response text (markdown)
+  interactionId: string; // For follow-up requests
+  sources: string[]; // URLs if web search was used
+  contextFilesUsed: string[]; // Which context files were read
+}
+
+// =============================================================================
 // SETTINGS TYPES
 // =============================================================================
 
@@ -192,6 +213,9 @@ export const API_ENDPOINTS = {
   LEETCODE: {
     SOLVE: '/solutions/leetcode/solve',
     DEBUG: '/solutions/leetcode/debug',
+  },
+  ASSISTANT: {
+    QUERY: '/assistant/query',
   },
 } as const;
 

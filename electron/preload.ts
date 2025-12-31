@@ -12,6 +12,25 @@ interface VoiceResponse {
   error?: string;
 }
 
+interface AssistantQueryRequest {
+  text?: string;
+  audio?: string;
+  images?: string[];
+  previousInteractionId?: string;
+  enableWebSearch?: boolean;
+  enableUrlContext?: boolean;
+  enablePersonalContext?: boolean;
+}
+
+interface AssistantQueryResponse {
+  success: boolean;
+  response?: string;
+  error?: string;
+  sources?: string[];
+  contextFilesUsed?: string[];
+  interactionId?: string;
+}
+
 interface ElectronAPI {
   openSubscriptionPortal: (authData: {
     email: string;
@@ -98,6 +117,15 @@ interface ElectronAPI {
     text: string,
     waitDuration?: number,
   ) => Promise<{ success: boolean; error?: string }>;
+  queryAssistant: (request: AssistantQueryRequest) => Promise<AssistantQueryResponse>;
+  queryAssistantStream: (request: AssistantQueryRequest) => Promise<{ success: boolean; error?: string }>;
+  onAssistantStreamChunk: (callback: (chunk: {
+    type: string;
+    content?: string;
+    interaction_id?: string;
+    sources?: string[];
+    context_files_used?: string[];
+  }) => void) => () => void;
 }
 
 export const PROCESSING_EVENTS = {
@@ -306,6 +334,23 @@ const electronAPI = {
     conversation_id?: string;
     conversation_history?: Array<{ role: string; content: string }>;
   }) => ipcRenderer.invoke('process-voice', data),
+  queryAssistant: (request: AssistantQueryRequest) =>
+    ipcRenderer.invoke('query-assistant', request),
+  queryAssistantStream: (request: AssistantQueryRequest) =>
+    ipcRenderer.invoke('query-assistant-stream', request),
+  onAssistantStreamChunk: (callback: (chunk: {
+    type: string;
+    content?: string;
+    interaction_id?: string;
+    sources?: string[];
+    context_files_used?: string[];
+  }) => void) => {
+    const subscription = (_: any, chunk: any) => callback(chunk);
+    ipcRenderer.on('assistant-stream-chunk', subscription);
+    return () => {
+      ipcRenderer.removeListener('assistant-stream-chunk', subscription);
+    };
+  },
 } as ElectronAPI;
 
 // Before exposing the API

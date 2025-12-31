@@ -16,6 +16,13 @@ interface SettingsContextType {
   error: string | null;
   updateSolutionLanguage: (language: ProgrammingLanguage) => Promise<void>;
   updateUserLanguage: (language: UserLanguage) => Promise<void>;
+  // Assistant capability toggles
+  enableWebSearch: boolean;
+  enableUrlContext: boolean;
+  enablePersonalContext: boolean;
+  toggleWebSearch: () => void;
+  toggleUrlContext: () => void;
+  togglePersonalContext: () => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(
@@ -37,6 +44,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Assistant capability toggles (default all enabled)
+  const [enableWebSearch, setEnableWebSearch] = useState(true);
+  const [enableUrlContext, setEnableUrlContext] = useState(true);
+  const [enablePersonalContext, setEnablePersonalContext] = useState(true);
 
   const storageProvider = getStorageProvider();
 
@@ -98,6 +110,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
     void fetchSettings();
   }, [fetchSettings]);
 
+  // Toggle functions for assistant capabilities
+  const toggleWebSearch = useCallback(() => {
+    setEnableWebSearch((prev) => !prev);
+  }, []);
+
+  const toggleUrlContext = useCallback(() => {
+    setEnableUrlContext((prev) => !prev);
+  }, []);
+
+  const togglePersonalContext = useCallback(() => {
+    setEnablePersonalContext((prev) => !prev);
+  }, []);
+
   const value: SettingsContextType = {
     solutionLanguage,
     userLanguage,
@@ -105,6 +130,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
     error,
     updateSolutionLanguage,
     updateUserLanguage,
+    // Assistant capability toggles
+    enableWebSearch,
+    enableUrlContext,
+    enablePersonalContext,
+    toggleWebSearch,
+    toggleUrlContext,
+    togglePersonalContext,
   };
 
   return (

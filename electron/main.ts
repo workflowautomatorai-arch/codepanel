@@ -7,6 +7,7 @@ import { ShortcutsHelper } from './shortcuts';
 import { AppMode } from '../shared/api';
 import { WindowConfigFactory } from './window-config/WindowConfigFactory';
 import { AppStorage } from './app.storage';
+import { backendManager } from './backend-manager';
 import * as dotenv from 'dotenv';
 
 const isDev = !app.isPackaged;
@@ -666,6 +667,17 @@ async function initializeApp() {
   try {
     loadEnvVariables();
 
+    // Start the Python backend before anything else
+    console.log('Starting Python backend...');
+    try {
+      await backendManager.start();
+      console.log('Python backend started successfully');
+    } catch (err) {
+      console.error('Failed to start Python backend:', err);
+      // Error dialog is shown by BackendManager, but we continue
+      // to allow the app to start (user might want to start backend manually)
+    }
+
     const appStorage = AppStorage.getInstance();
     const savedAppMode = appStorage.getAppMode();
     state.appMode = savedAppMode;
@@ -727,6 +739,16 @@ if (!gotLock) {
     }
   });
 }
+
+// Stop the Python backend before quitting
+app.on('before-quit', async (event) => {
+  if (backendManager.isHealthy()) {
+    event.preventDefault();
+    console.log('Stopping Python backend before quit...');
+    await backendManager.stop();
+    app.quit();
+  }
+});
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {

@@ -1,3 +1,9 @@
+---
+description: Professional background, skills, work history, and STAR interview examples
+use_when: behavioral interviews, tell me about yourself, describe your experience, strengths and weaknesses
+type: personal_background
+---
+
 # Arie Shifrin - Professional Context for AI Assistant
 
 ## Professional Summary

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { QueuePage, SolutionsPage } from '.';
+import AssistantPage from './AssistantPage';
 import { AppModeLayoutProvider } from '../layouts';
 import { useToast } from '../contexts/toast';
 import { SettingsProvider } from '../contexts/SettingsContext';
@@ -8,6 +9,7 @@ import {
   useSolutionContext,
 } from '../contexts/SolutionContext';
 import { ScreenshotProvider } from '../contexts/ScreenshotContext';
+import { ChatProvider } from '../contexts/ChatContext';
 // DragHandle removed - entire overlay is now draggable
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -15,7 +17,7 @@ interface SubscribedAppProps {}
 
 const SubscribedAppContent: React.FC = () => {
   const { clearAll } = useSolutionContext();
-  const [view, setView] = useState<'queue' | 'solutions' | 'debug'>('queue');
+  const [view, setView] = useState<'assistant' | 'queue' | 'solutions' | 'debug'>('assistant');
   const containerRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
   const dimensionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,7 +201,11 @@ const SubscribedAppContent: React.FC = () => {
         data-overlay-content
         className="glass-container min-h-[200px] flex flex-col overflow-visible cursor-move"
       >
-        {view === 'queue' ? (
+        {view === 'assistant' ? (
+          <div className="flex flex-col h-[600px] max-h-[85vh]">
+            <AssistantPage setView={setView} />
+          </div>
+        ) : view === 'queue' ? (
           <QueuePage setView={setView} />
         ) : view === 'solutions' ? (
           <SolutionsPage setView={setView} />
@@ -212,11 +218,13 @@ const SubscribedAppContent: React.FC = () => {
 const SubscribedApp: React.FC<SubscribedAppProps> = () => {
   return (
     <SettingsProvider>
-      <SolutionProvider>
-        <ScreenshotProvider>
-          <SubscribedAppContent />
-        </ScreenshotProvider>
-      </SolutionProvider>
+      <ChatProvider>
+        <SolutionProvider>
+          <ScreenshotProvider>
+            <SubscribedAppContent />
+          </ScreenshotProvider>
+        </SolutionProvider>
+      </ChatProvider>
     </SettingsProvider>
   );
 };

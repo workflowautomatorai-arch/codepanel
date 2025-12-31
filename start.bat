@@ -43,32 +43,28 @@ if not exist "%~dp0node_modules" (
 )
 
 echo.
-echo Starting services...
+echo Starting CodePanel...
 echo.
 
-:: Start backend in a new window
-echo [>>] Starting backend server...
-start "CodePanel-Backend" cmd /k "cd /d %~dp0backend && venv\Scripts\pip install -q -r requirements.txt && venv\Scripts\python server.py"
+:: Start the app using npm run dev
+:: Electron will automatically spawn the Python backend
+cd /d "%~dp0"
+start "CodePanel" cmd /k "npm run dev"
 
-:: Wait for backend to initialize
-echo     Waiting for backend...
+:: Wait for startup
 timeout /t 3 /nobreak > nul
-
-:: Start frontend in a new window
-echo [>>] Starting frontend...
-start "CodePanel-Frontend" cmd /k "cd /d %~dp0 && npm run dev"
-
-:: Wait and check health
-timeout /t 2 /nobreak > nul
 
 echo.
 echo ============================================
 echo   CodePanel Started!
 echo ============================================
 echo.
-echo   Backend:  http://localhost:3000
-echo   Frontend: http://localhost:54321
+echo   The Electron app will automatically manage
+echo   the Python backend - no separate windows needed.
 echo.
-echo   To stop: run stop.bat or close windows
+echo   Frontend: http://localhost:54321
+echo   Backend:  http://localhost:3000 (auto-managed)
+echo.
+echo   To stop: Close the Electron window or run stop.bat
 echo ============================================
 echo.

@@ -4,12 +4,61 @@ Handles different use cases with appropriate context
 Supports agentic context fetching via function calling
 """
 
+import re
 from enum import Enum
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 # Context directory
 CONTEXT_DIR = Path(__file__).parent / "context"
+
+
+# =============================================================================
+# YAML HEADER PARSING
+# =============================================================================
+
+def parse_yaml_header(content: str) -> Dict[str, str]:
+    """
+    Parse YAML front matter from a context file.
+
+    Expected format:
+    ---
+    description: Short description of the file
+    use_when: When the AI should use this file
+    ---
+
+    Returns dict with parsed values or empty dict if no header.
+    """
+    if not content.startswith('---'):
+        return {}
+
+    # Find the closing ---
+    end_match = re.search(r'\n---\s*\n', content[3:])
+    if not end_match:
+        return {}
+
+    header_content = content[3:end_match.start() + 3]
+    result = {}
+
+    for line in header_content.split('\n'):
+        line = line.strip()
+        if ':' in line:
+            key, value = line.split(':', 1)
+            result[key.strip()] = value.strip()
+
+    return result
+
+
+def get_content_without_header(content: str) -> str:
+    """Remove YAML header from content if present"""
+    if not content.startswith('---'):
+        return content
+
+    end_match = re.search(r'\n---\s*\n', content[3:])
+    if not end_match:
+        return content
+
+    return content[end_match.end() + 3:].strip()
 
 
 # =============================================================================
@@ -20,6 +69,7 @@ def get_available_context_files() -> List[Dict[str, str]]:
     """
     Get list of available context files with descriptions.
     Returns metadata only - not the actual content.
+    Supports YAML front matter for self-describing files.
     """
     if not CONTEXT_DIR.exists():
         CONTEXT_DIR.mkdir(exist_ok=True)
@@ -27,24 +77,62 @@ def get_available_context_files() -> List[Dict[str, str]]:
 
     files = []
     for file in list(CONTEXT_DIR.glob("*.txt")) + list(CONTEXT_DIR.glob("*.md")):
-        # Read first few lines to get description
+        # Skip README
+        if file.name.lower() == "readme.md":
+            continue
+
         try:
             content = file.read_text(encoding="utf-8")
-            # Get first non-empty line as description
-            lines = [l.strip() for l in content.split('\n') if l.strip()]
-            description = lines[0][:100] if lines else "No description"
-            # Clean up markdown headers
-            description = description.lstrip('#').strip()
+
+            # Try to parse YAML header first
+            header = parse_yaml_header(content)
+
+            if header:
+                description = header.get("description", "No description")
+                use_when = header.get("use_when", "")
+                file_type = header.get("type", "personal_background" if "about" in file.name.lower() else "reference")
+            else:
+                # Fallback: use first non-empty line as description
+                lines = [l.strip() for l in content.split('\n') if l.strip()]
+                description = lines[0][:100] if lines else "No description"
+                description = description.lstrip('#').strip()
+                use_when = ""
+                file_type = "personal_background" if "about" in file.name.lower() else "reference"
 
             files.append({
                 "filename": file.name,
                 "description": description,
-                "type": "personal_background" if "about" in file.name.lower() else "reference"
+                "use_when": use_when,
+                "type": file_type
             })
         except Exception as e:
             print(f"Error reading {file}: {e}")
 
     return files
+
+
+def list_context_files() -> str:
+    """
+    List available context files in a format the AI can understand.
+    This is the function called by the AI tool.
+
+    Returns:
+        Formatted string listing all available context files
+    """
+    files = get_available_context_files()
+
+    if not files:
+        return "No context files available."
+
+    result = "Available context files:\n\n"
+    for f in files:
+        result += f"- **{f['filename']}**\n"
+        result += f"  Description: {f['description']}\n"
+        if f.get('use_when'):
+            result += f"  Use when: {f['use_when']}\n"
+        result += f"  Type: {f['type']}\n\n"
+
+    return result
 
 
 def read_context_file(filename: str) -> str:
@@ -57,7 +145,6 @@ def read_context_file(filename: str) -> str:
         return "Invalid filename: path separators not allowed"
 
     # Only allow alphanumeric, underscore, hyphen, and dot
-    import re
     if not re.match(r'^[\w\-\.]+$', filename):
         return "Invalid filename: contains invalid characters"
 

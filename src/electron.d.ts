@@ -95,6 +95,41 @@ export interface ElectronAPI {
     conversation_id?: string;
     error?: string;
   }>;
+  queryAssistant: (request: {
+    text?: string;
+    audio?: string;
+    images?: string[];
+    previousInteractionId?: string;
+    enableWebSearch?: boolean;
+    enableUrlContext?: boolean;
+    enablePersonalContext?: boolean;
+  }) => Promise<{
+    success: boolean;
+    response?: string;
+    error?: string;
+    sources?: string[];
+    contextFilesUsed?: string[];
+    interactionId?: string;
+  }>;
+  queryAssistantStream: (request: {
+    text?: string;
+    audio?: string;
+    images?: string[];
+    previousInteractionId?: string;
+    enableWebSearch?: boolean;
+    enableUrlContext?: boolean;
+    enablePersonalContext?: boolean;
+  }) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  onAssistantStreamChunk: (callback: (chunk: {
+    type: string;
+    content?: string;
+    interaction_id?: string;
+    sources?: string[];
+    context_files_used?: string[];
+  }) => void) => () => void;
 }
 
 export interface IElectron {

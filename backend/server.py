@@ -4,6 +4,7 @@ Uses Gemini Interactions API for simplified state management
 """
 
 import os
+import asyncio
 import base64
 import re
 import threading
@@ -12,6 +13,7 @@ from dotenv import load_dotenv
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from prompts import (
@@ -20,15 +22,17 @@ from prompts import (
     build_voice_prompt,
     load_user_context,
     read_context_file,
+    list_context_files,
     get_available_context_files,
     QueryType,
     CONTEXT_DIR,
 )
+from services import AssistantService, AssistantRequest, AssistantResponse, StreamChunk, get_assistant_service
+from audio_utils import convert_audio_to_wav, find_ffmpeg
 
 load_dotenv()
 
 # Configurable timeouts
-FFMPEG_TIMEOUT = int(os.environ.get("FFMPEG_TIMEOUT", "30"))
 GEMINI_TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "90"))
 
 app = FastAPI(title="CodePanel Self-Hosted API")
@@ -127,6 +131,29 @@ class VoiceResponse(BaseModel):
 
 
 # =============================================================================
+# ASSISTANT ENDPOINT MODELS
+# =============================================================================
+
+class AssistantQueryRequest(BaseModel):
+    """Request model for the unified assistant endpoint"""
+    text: str = ""
+    images: List[str] = []
+    audio: Optional[str] = None
+    previous_interaction_id: Optional[str] = None
+    enable_web_search: bool = True
+    enable_url_context: bool = True
+    enable_personal_context: bool = True
+
+
+class AssistantQueryResponse(BaseModel):
+    """Response model for the unified assistant endpoint"""
+    response: str
+    interaction_id: str
+    sources: List[str] = []
+    context_files_used: List[str] = []
+
+
+# =============================================================================
 # TOOL DEFINITION (Interactions API format)
 # =============================================================================
 
@@ -153,89 +180,6 @@ def get_context_tool():
             "required": ["filename"]
         }
     }
-
-
-# =============================================================================
-# AUDIO CONVERSION
-# =============================================================================
-
-def find_ffmpeg() -> Optional[str]:
-    """Find ffmpeg executable path"""
-    import shutil
-
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg:
-        return ffmpeg
-
-    # Check winget installation location
-    winget_path = Path.home() / "AppData/Local/Microsoft/WinGet/Packages"
-    for pkg_dir in winget_path.glob("Gyan.FFmpeg*"):
-        for bin_dir in pkg_dir.glob("ffmpeg-*/bin"):
-            ffmpeg_exe = bin_dir / "ffmpeg.exe"
-            if ffmpeg_exe.exists():
-                return str(ffmpeg_exe)
-
-    return None
-
-
-def convert_audio_to_wav(audio_data: bytes, source_format: str = "webm") -> bytes:
-    """Convert audio from webm/opus to WAV format"""
-    import subprocess
-    import tempfile
-    import re
-
-    # Sanitize source_format
-    if not re.match(r'^[a-z0-9]+$', source_format):
-        raise ValueError(f"Invalid audio format: {source_format}")
-
-    ffmpeg = find_ffmpeg()
-    if not ffmpeg:
-        raise Exception("ffmpeg not found. Please install ffmpeg and restart.")
-
-    input_path = None
-    output_path = None
-
-    try:
-        with tempfile.NamedTemporaryFile(suffix=f".{source_format}", delete=False) as input_file:
-            input_file.write(audio_data)
-            input_path = input_file.name
-
-        output_path = input_path.replace(f".{source_format}", ".wav")
-
-        cmd = [
-            ffmpeg, "-y", "-i", input_path,
-            "-ar", "16000",
-            "-ac", "1",
-            "-f", "wav",
-            output_path
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT)
-
-        if result.returncode != 0:
-            raise Exception(f"ffmpeg conversion failed: {result.stderr}")
-
-        with open(output_path, "rb") as f:
-            wav_data = f.read()
-
-        return wav_data
-
-    except subprocess.TimeoutExpired:
-        raise Exception("Audio conversion timed out")
-    except Exception as e:
-        raise Exception(f"Failed to convert audio: {e}")
-    finally:
-        # Always cleanup temp files
-        if input_path and os.path.exists(input_path):
-            try:
-                os.unlink(input_path)
-            except:
-                pass
-        if output_path and os.path.exists(output_path):
-            try:
-                os.unlink(output_path)
-            except:
-                pass
 
 
 # =============================================================================
@@ -481,6 +425,109 @@ async def voice_query(request: VoiceRequest):
 
 
 # =============================================================================
+# UNIFIED ASSISTANT ENDPOINT
+# =============================================================================
+
+@app.post("/assistant/query", response_model=AssistantQueryResponse)
+async def assistant_query(request: AssistantQueryRequest):
+    """
+    Unified personal assistant endpoint with full tool support.
+
+    Features:
+    - Personal context from context/ directory
+    - Google Search for real-time information
+    - URL context for webpage analysis
+    - Stateful conversations via previous_interaction_id
+    """
+    try:
+        client = get_client()
+        service = get_assistant_service(client)
+
+        # Convert Pydantic model to service request
+        service_request = AssistantRequest(
+            text=request.text,
+            images=request.images,
+            audio=request.audio,
+            previous_interaction_id=request.previous_interaction_id,
+            enable_web_search=request.enable_web_search,
+            enable_url_context=request.enable_url_context,
+            enable_personal_context=request.enable_personal_context,
+        )
+
+        # Process query through assistant service
+        result = await service.query(service_request)
+
+        return AssistantQueryResponse(
+            response=result.response,
+            interaction_id=result.interaction_id,
+            sources=result.sources,
+            context_files_used=result.context_files_used,
+        )
+
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Request timed out")
+    except Exception as e:
+        print(f"[Assistant] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/assistant/query/stream")
+async def assistant_query_stream(request: AssistantQueryRequest):
+    """
+    Streaming version of the assistant endpoint.
+    Returns Server-Sent Events (SSE) with real-time response chunks.
+    """
+    import json
+
+    async def generate():
+        try:
+            print(f"[Stream Endpoint] Starting stream for: {request.text[:50] if request.text else 'None'}...", flush=True)
+            client = get_client()
+            service = get_assistant_service(client)
+
+            service_request = AssistantRequest(
+                text=request.text,
+                images=request.images,
+                audio=request.audio,
+                previous_interaction_id=request.previous_interaction_id,
+                enable_web_search=request.enable_web_search,
+                enable_url_context=request.enable_url_context,
+                enable_personal_context=request.enable_personal_context,
+            )
+
+            chunk_num = 0
+            async for chunk in service.query_stream(service_request):
+                chunk_num += 1
+                print(f"[Stream Endpoint] Chunk {chunk_num}: type={chunk.type}, content_len={len(chunk.content)}", flush=True)
+                data = {
+                    "type": chunk.type,
+                    "content": chunk.content,
+                    "interaction_id": chunk.interaction_id,
+                    "sources": chunk.sources,
+                    "context_files_used": chunk.context_files_used,
+                }
+                yield f"data: {json.dumps(data)}\n\n"
+            print(f"[Stream Endpoint] Stream complete, {chunk_num} chunks", flush=True)
+
+        except Exception as e:
+            print(f"[Assistant Stream] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            error_data = {"type": "error", "content": str(e)}
+            yield f"data: {json.dumps(error_data)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+# =============================================================================
 # LIVE INTERVIEW MODE ENDPOINTS
 # =============================================================================
 
@@ -644,6 +691,7 @@ Analyze the issue and provide a corrected solution. Respond with ONLY the fixed 
 @app.get("/health")
 async def health_check():
     gemini_ok = bool(os.environ.get("GOOGLE_API_KEY"))
+    context_files = get_available_context_files()
 
     return {
         "status": "OK",
@@ -651,7 +699,14 @@ async def health_check():
         "provider": "gemini",
         "api": "interactions",
         "model": GEMINI_MODEL,
-        "gemini": "configured" if gemini_ok else "missing GOOGLE_API_KEY"
+        "gemini": "configured" if gemini_ok else "missing GOOGLE_API_KEY",
+        "capabilities": {
+            "assistant": True,
+            "web_search": True,
+            "url_context": True,
+            "personal_context": len(context_files) > 0,
+            "context_files": [f["filename"] for f in context_files]
+        }
     }
 
 
@@ -685,6 +740,7 @@ if __name__ == "__main__":
         print("  No context files found. Add .txt or .md files for personalization.")
 
     print(f"\nEndpoints:")
+    print("  POST /assistant/query          - Personal assistant (web search, context, URL)")
     print("  POST /solutions/solve          - Solve with images/audio")
     print("  POST /solutions/debug          - Debug with images/audio")
     print("  POST /solutions/leetcode/solve - LeetCode solve")

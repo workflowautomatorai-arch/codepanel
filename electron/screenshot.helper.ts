@@ -212,7 +212,21 @@ export class ScreenshotHelper {
     return screenshotPath;
   }
 
+  /**
+   * Validate that a path is within the screenshot directory to prevent path traversal attacks
+   */
+  private isPathWithinScreenshotDir(filepath: string): boolean {
+    const resolvedPath = path.resolve(filepath);
+    const resolvedScreenshotDir = path.resolve(this.screenshotDir);
+    return resolvedPath.startsWith(resolvedScreenshotDir + path.sep) || resolvedPath === resolvedScreenshotDir;
+  }
+
   public async getImagePreview(filepath: string): Promise<string> {
+    // Security: Validate path is within screenshot directory
+    if (!this.isPathWithinScreenshotDir(filepath)) {
+      throw new Error('Invalid path: access denied');
+    }
+
     try {
       const data = await fs.promises.readFile(filepath);
 
@@ -225,15 +239,20 @@ export class ScreenshotHelper {
   }
 
   public async deleteScreenshot(
-    path: string,
+    filepath: string,
   ): Promise<{ success: boolean; error?: string }> {
+    // Security: Validate path is within screenshot directory
+    if (!this.isPathWithinScreenshotDir(filepath)) {
+      return { success: false, error: 'Invalid path: access denied' };
+    }
+
     try {
-      await fs.promises.unlink(path);
+      await fs.promises.unlink(filepath);
       this.screenshotQueue = this.screenshotQueue.filter(
-        (filePath) => filePath !== path,
+        (filePath) => filePath !== filepath,
       );
 
-      console.log('Screenshot deleted', path);
+      console.log('Screenshot deleted', filepath);
 
       return { success: true };
     } catch (error) {
