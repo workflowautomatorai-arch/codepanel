@@ -664,6 +664,7 @@
 .glass-container [role="button"],
 .glass-container .no-drag,
 .glass-container [data-scrollable],
+.glass-container [data-scrollable] *,
 .glass-container pre,
 .glass-container code,
 .glass-container .prose,

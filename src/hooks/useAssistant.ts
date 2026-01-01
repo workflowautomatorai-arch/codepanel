@@ -6,6 +6,7 @@ import {
   generateMessageId,
 } from '../contexts/ChatContext';
 import { useScreenshots } from './useScreenshots';
+import { useScreenshotEvents } from './useScreenshotEvents';
 import { useToast } from '../contexts/toast';
 
 interface AssistantCapabilities {
@@ -39,7 +40,11 @@ export function useAssistant(options: UseAssistantOptions) {
     screenshots,
     handleDeleteScreenshot,
     clearAllScreenshots,
+    refetch,
   } = useScreenshots();
+
+  // Listen for screenshot events to refetch when new screenshots are taken
+  useScreenshotEvents({ refetch });
 
   const { showToast } = useToast();
 

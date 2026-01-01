@@ -7,7 +7,19 @@
       "Bash(git add:*)",
       "Skill(feature-dev:feature-dev)",
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Skill(superpowers:executing-plans)",
+      "Bash(python -c:*)",
+      "Bash(npm install:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm run compile:electron:*)",
+      "Bash(npm run compile:renderer:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run compile:*)",
+      "Skill(superpowers:finishing-a-development-branch)",
+      "Bash(npm test)",
+      "Bash(git stash:*)",
+      "Skill(code-review:code-review)"
     ]
   },
   "enableAllProjectMcpServers": true,

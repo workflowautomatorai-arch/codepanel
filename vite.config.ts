@@ -16,10 +16,14 @@ export default defineConfig({
             outDir: 'dist-electron',
             sourcemap: true,
             minify: false,
-              rollupOptions: {
-                external: ['electron'],
-              },
+            rollupOptions: {
+              external: [
+                'electron',
+                'bufferutil',
+                'utf-8-validate',
+              ],
             },
+          },
         },
       },
       {

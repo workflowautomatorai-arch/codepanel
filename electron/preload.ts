@@ -130,6 +130,8 @@ interface ElectronAPI {
   startLiveSession: () => Promise<{ success: boolean; sessionId?: string; error?: string }>;
   stopLiveSession: () => Promise<{ success: boolean; error?: string }>;
   sendLiveText: (text: string) => Promise<{ success: boolean; error?: string }>;
+  sendLiveAudio: (pcmData: ArrayBuffer) => Promise<{ success: boolean; error?: string }>;
+  getDesktopSources: () => Promise<{ id: string; name: string }[]>;
   onLiveResponse: (callback: (response: { type: string; content: string; timestamp: number }) => void) => () => void;
   onToggleLiveMode: (callback: () => void) => () => void;
 }
@@ -361,6 +363,8 @@ const electronAPI = {
   startLiveSession: () => ipcRenderer.invoke('start-live-session'),
   stopLiveSession: () => ipcRenderer.invoke('stop-live-session'),
   sendLiveText: (text: string) => ipcRenderer.invoke('send-live-text', text),
+  sendLiveAudio: (pcmData: ArrayBuffer) => ipcRenderer.invoke('send-live-audio', Buffer.from(pcmData)),
+  getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
   onLiveResponse: (callback: (response: { type: string; content: string; timestamp: number }) => void) => {
     const subscription = (_: any, response: { type: string; content: string; timestamp: number }) => callback(response);
     ipcRenderer.on('live-response', subscription);

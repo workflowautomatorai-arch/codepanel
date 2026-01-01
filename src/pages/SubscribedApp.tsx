@@ -142,11 +142,11 @@ const SubscribedAppContent: React.FC = () => {
     return () => cleanupFunctions.forEach((fn) => fn());
   }, [clearAll, showToast, updateDimensions]);
 
-  // Disable click-through when in solutions view (need to scroll)
+  // Disable click-through when in assistant/solutions/debug view (need to scroll and interact)
   // Enable click-through in queue view for click-through to work
   useEffect(() => {
-    if (view === 'solutions' || view === 'debug') {
-      // Solutions view: always interactive for scrolling
+    if (view === 'assistant' || view === 'solutions' || view === 'debug') {
+      // These views need to be always interactive for scrolling and buttons
       window.electronAPI?.handleMouseEnter?.();
 
       return () => {

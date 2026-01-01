@@ -230,6 +230,9 @@ class AssistantService:
         print(f"[Stream] Tools count: {len(tools)}", flush=True)
         print(f"[Stream] Tool names: {[t.get('name', t.get('type', 'unknown')) for t in tools]}", flush=True)
         print(f"[Stream] Request text: {request.text[:100] if request.text else 'None'}...", flush=True)
+        print(f"[Stream] Request has audio: {bool(request.audio)}", flush=True)
+        print(f"[Stream] Request images count: {len(request.images)}", flush=True)
+        print(f"[Stream] Content parts: {[c.get('type') for c in content]}", flush=True)
         sys.stdout.flush()
 
         # Build request params with streaming enabled
@@ -379,6 +382,9 @@ class AssistantService:
                     "input": function_results,
                     "stream": True,
                 }
+                # Include tools so model can make additional tool calls if needed
+                if tools:
+                    params["tools"] = tools
                 print(f"[Stream] Continuing with function results, interaction_id: {interaction_id}", flush=True)
 
             # Send completion chunk
@@ -426,8 +432,14 @@ class AssistantService:
             if audio_content:
                 content.append(audio_content)
 
-        # Add text
-        text = request.text or "Please analyze the provided content."
+        # Add text - use appropriate default based on content type
+        if request.text:
+            text = request.text
+        elif request.audio:
+            # For voice messages, instruct model to respond to what was said
+            text = "Listen to my voice message and respond to what I said. Treat this as a conversation."
+        else:
+            text = "Please analyze the provided content."
         content.append({"type": "text", "text": text})
 
         return content

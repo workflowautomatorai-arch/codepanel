@@ -1,4 +1,4 @@
-import { app, ipcMain, shell, BrowserWindow } from 'electron';
+import { app, ipcMain, shell, BrowserWindow, desktopCapturer } from 'electron';
 import { IIpcHandlerDeps } from './main';
 import { IPC_EVENTS, API_BASE_URL } from '../shared/constants';
 import { AppMode } from '../shared/api';
@@ -6,11 +6,10 @@ import { AuthStorage } from './auth.storage';
 import { AppStorage } from './app.storage';
 import axios from 'axios';
 import WebSocket from 'ws';
-import { AudioCapture } from './audio-capture';
 
 // Live session state
 let liveSocket: WebSocket | null = null;
-let audioCapture: AudioCapture | null = null;
+let audioChunkCount = 0;
 
 function waitForMessage(ws: WebSocket, type: string, timeoutMs = 10000): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
@@ -794,7 +793,16 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   // LIVE SESSION HANDLERS
   // =============================================================================
 
-  // Start live listening session
+  // Get desktop sources for audio capture
+  ipcMain.handle('get-desktop-sources', async () => {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 0, height: 0 }
+    });
+    return sources.map(s => ({ id: s.id, name: s.name }));
+  });
+
+  // Start live listening session (audio capture happens in renderer)
   ipcMain.handle('start-live-session', async () => {
     try {
       // Close existing session if any
@@ -802,10 +810,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
         liveSocket.close();
         liveSocket = null;
       }
-      if (audioCapture) {
-        audioCapture.stop();
-        audioCapture = null;
-      }
+      audioChunkCount = 0;
 
       // Connect to Python backend WebSocket
       liveSocket = new WebSocket('ws://localhost:3000/live/stream');
@@ -819,20 +824,13 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       const ready = await waitForMessage(liveSocket, 'ready');
       console.log('[IPC] Live session ready:', ready.session_id);
 
-      // Start audio capture
-      audioCapture = new AudioCapture();
-      audioCapture.onAudioData((pcmData: Buffer) => {
-        if (liveSocket?.readyState === WebSocket.OPEN) {
-          liveSocket.send(pcmData);
-        }
-      });
-      await audioCapture.start();
-
       // Forward responses to renderer
       liveSocket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data.toString());
+          console.log('[IPC] Received from backend:', data.type);
           if (data.type === 'response') {
+            console.log('[IPC] Forwarding AI response to renderer:', data.content?.substring(0, 50));
             const mainWindow = BrowserWindow.getAllWindows()[0];
             mainWindow?.webContents.send('live-response', data);
           }
@@ -843,8 +841,6 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
 
       liveSocket.onclose = () => {
         console.log('[IPC] Live WebSocket closed');
-        audioCapture?.stop();
-        audioCapture = null;
         liveSocket = null;
       };
 
@@ -858,14 +854,25 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   // Stop live listening session
   ipcMain.handle('stop-live-session', async () => {
     try {
-      audioCapture?.stop();
-      audioCapture = null;
       liveSocket?.close();
       liveSocket = null;
       return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
+  });
+
+  // Receive audio from renderer and forward to backend
+  ipcMain.handle('send-live-audio', async (_, pcmData: Buffer) => {
+    if (liveSocket?.readyState === WebSocket.OPEN) {
+      audioChunkCount++;
+      if (audioChunkCount % 50 === 0) {
+        console.log(`[IPC] Sent ${audioChunkCount} audio chunks to backend`);
+      }
+      liveSocket.send(pcmData);
+      return { success: true };
+    }
+    return { success: false, error: 'Live session not active' };
   });
 
   // Send text while in live mode

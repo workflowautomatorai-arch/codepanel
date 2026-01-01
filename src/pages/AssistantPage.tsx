@@ -64,35 +64,37 @@ const AssistantPage: React.FC<AssistantPageProps> = () => {
   };
 
   return (
-    <AssistantLayout
-      commandSection={
-        <AssistantCommands
-          onScreenshot={addScreenshot}
-          onClear={clearChat}
-          screenshotCount={screenshots.length}
-          isProcessing={isProcessing}
-          isLiveMode={isLiveMode}
-          isConnecting={isConnecting}
-          onToggleLiveMode={toggleLiveMode}
-        />
-      }
-      chatSection={
-        <>
-          {/* Message list - scrollable */}
-          <ChatMessageList messages={messages} />
-          {/* Input - stays at bottom */}
-          <div className="flex-shrink-0 pt-2">
-            <ChatInput
-              onSendMessage={handleSendMessage}
-              onSendVoice={sendVoice}
-              screenshots={screenshots}
-              onRemoveScreenshot={removeScreenshot}
-              isProcessing={isProcessing || isConnecting}
-            />
-          </div>
-        </>
-      }
-    />
+    <>
+      <AssistantLayout
+        commandSection={
+          <AssistantCommands
+            onScreenshot={addScreenshot}
+            onClear={clearChat}
+            screenshotCount={screenshots.length}
+            isProcessing={isProcessing}
+            isLiveMode={isLiveMode}
+            isConnecting={isConnecting}
+            onToggleLiveMode={toggleLiveMode}
+          />
+        }
+        chatSection={
+          <>
+            {/* Message list - scrollable */}
+            <ChatMessageList messages={messages} />
+            {/* Input - stays at bottom */}
+            <div className="flex-shrink-0 pt-2">
+              <ChatInput
+                onSendMessage={handleSendMessage}
+                onSendVoice={sendVoice}
+                screenshots={screenshots}
+                onRemoveScreenshot={removeScreenshot}
+                isProcessing={isProcessing || isConnecting}
+              />
+            </div>
+          </>
+        }
+      />
+    </>
   );
 };
 

@@ -801,15 +801,38 @@ async def _handle_incoming(websocket: WebSocket, manager: LiveSessionManager):
 
 
 async def _handle_outgoing(websocket: WebSocket, manager: LiveSessionManager):
-    """Receive text from Live API, send to Electron"""
+    """Receive messages from Live API, send to Electron"""
     try:
-        async for text in manager.receive_responses():
-            print(f"[Live] AI Response: {text[:100]}..." if len(text) > 100 else f"[Live] AI Response: {text}")
-            await websocket.send_json({
-                "type": "response",
-                "content": text,
-                "timestamp": time.time()
-            })
+        async for msg in manager.receive_responses():
+            if msg.type == "response":
+                # Main AI response - show in chat
+                print(f"[Live] AI Response: {msg.content[:100]}..." if len(msg.content) > 100 else f"[Live] AI Response: {msg.content}")
+                await websocket.send_json({
+                    "type": "response",
+                    "content": msg.content,
+                    "timestamp": msg.timestamp
+                })
+            elif msg.type == "transcript":
+                # User's transcribed speech - for debug view
+                print(f"[Live] User said: {msg.content}")
+                await websocket.send_json({
+                    "type": "transcript",
+                    "content": msg.content,
+                    "timestamp": msg.timestamp
+                })
+            elif msg.type == "interrupted":
+                # User interrupted AI
+                print(f"[Live] Interrupted")
+                await websocket.send_json({
+                    "type": "interrupted",
+                    "timestamp": msg.timestamp
+                })
+            elif msg.type == "generation_complete":
+                # AI finished generating (optional)
+                await websocket.send_json({
+                    "type": "generation_complete",
+                    "timestamp": msg.timestamp
+                })
     except Exception as e:
         print(f"[Live] Outgoing handler error: {e}")
 

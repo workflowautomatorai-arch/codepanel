@@ -134,6 +134,8 @@ export interface ElectronAPI {
   startLiveSession: () => Promise<{ success: boolean; sessionId?: string; error?: string }>;
   stopLiveSession: () => Promise<{ success: boolean; error?: string }>;
   sendLiveText: (text: string) => Promise<{ success: boolean; error?: string }>;
+  sendLiveAudio: (pcmData: ArrayBuffer) => Promise<{ success: boolean; error?: string }>;
+  getDesktopSources: () => Promise<{ id: string; name: string }[]>;
   onLiveResponse: (callback: (response: { type: string; content: string; timestamp: number }) => void) => () => void;
   onToggleLiveMode: (callback: () => void) => () => void;
 }
