@@ -66,6 +66,8 @@ SYSTEM_INSTRUCTION = os.environ.get("GEMINI_SYSTEM_INSTRUCTION",
 
 _client = None
 _client_lock = threading.Lock()
+_live_client = None
+_live_client_lock = threading.Lock()
 
 def get_client():
     """Get or create the Gemini client (thread-safe)"""
@@ -79,6 +81,22 @@ def get_client():
                     raise ValueError("GOOGLE_API_KEY environment variable is required but not set")
                 _client = genai.Client(api_key=api_key)
     return _client
+
+def get_live_client():
+    """Get or create the Gemini client for Live API with v1alpha (thread-safe)"""
+    global _live_client
+    if _live_client is None:
+        with _live_client_lock:
+            if _live_client is None:
+                from google import genai
+                api_key = os.environ.get("GOOGLE_API_KEY")
+                if not api_key:
+                    raise ValueError("GOOGLE_API_KEY environment variable is required but not set")
+                _live_client = genai.Client(
+                    api_key=api_key,
+                    http_options={"api_version": "v1alpha"}
+                )
+    return _live_client
 
 
 # =============================================================================
@@ -710,15 +728,26 @@ async def live_audio_stream(websocket: WebSocket):
     await websocket.accept()
     session_id = str(uuid.uuid4())
 
-    client = get_client()
+    client = get_live_client()
     manager = LiveSessionManager(client)
 
-    print(f"[Live] New connection: {session_id}")
+    print(f"[Live] New connection: {session_id}", flush=True)
 
     try:
         # Start Live API session with system prompt
+        print(f"[Live] Starting session...", flush=True)
         system_prompt = get_live_system_prompt()
-        await manager.start_session(system_prompt)
+        print(f"[Live] Got system prompt ({len(system_prompt)} chars), connecting to Gemini...", flush=True)
+        try:
+            await manager.start_session(system_prompt)
+            print(f"[Live] Session started successfully", flush=True)
+        except Exception as start_err:
+            import traceback
+            print(f"[Live] Failed to start session: {start_err}")
+            print(f"[Live] Start session traceback:\n{traceback.format_exc()}")
+            import sys
+            sys.stdout.flush()
+            raise
 
         # Send ready confirmation
         await websocket.send_json({
@@ -734,7 +763,9 @@ async def live_audio_stream(websocket: WebSocket):
     except WebSocketDisconnect:
         print(f"[Live] Client disconnected: {session_id}")
     except Exception as e:
+        import traceback
         print(f"[Live] Error: {e}")
+        print(f"[Live] Traceback: {traceback.format_exc()}")
         try:
             await websocket.send_json({"type": "error", "content": str(e)})
         except:
@@ -746,12 +777,16 @@ async def live_audio_stream(websocket: WebSocket):
 
 async def _handle_incoming(websocket: WebSocket, manager: LiveSessionManager):
     """Receive audio/text from Electron, forward to Live API"""
+    audio_chunks = 0
     try:
         while manager.is_active:
             message = await websocket.receive()
 
             if "bytes" in message:
                 # Binary audio data
+                audio_chunks += 1
+                if audio_chunks % 50 == 0:  # Log every 5 seconds (50 * 100ms)
+                    print(f"[Live] Received {audio_chunks} audio chunks")
                 await manager.send_audio(message["bytes"])
             elif "text" in message:
                 # JSON text message
@@ -769,6 +804,7 @@ async def _handle_outgoing(websocket: WebSocket, manager: LiveSessionManager):
     """Receive text from Live API, send to Electron"""
     try:
         async for text in manager.receive_responses():
+            print(f"[Live] AI Response: {text[:100]}..." if len(text) > 100 else f"[Live] AI Response: {text}")
             await websocket.send_json({
                 "type": "response",
                 "content": text,
